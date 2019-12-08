@@ -78,7 +78,8 @@ for jf in dirListRecurse(arg['To']+'/app/src/main/java/'+getSubPath(javaFiles,'T
             if packageName['From'] in ln:
                 ln = ln.replace(packageName['From'],packageName['To'])
                 print("\t Changed package {} => {}".format(packageName['From'],packageName['To']))
-            cont.append(ln)
+            if ln[:6] != 'import':
+                cont.append(ln)
         with open("{}".format(jf),'w') as f:
             for ln in cont: f.write(ln)
 
