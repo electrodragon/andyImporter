@@ -1,0 +1,114 @@
+#!/usr/bin/python
+import os, sys, subprocess, random
+
+def show_help():
+    s = '\n   Android Project Importer\n'
+    s += '\n:: Usage:\n   andyImporter -f=<Existing_Project_Dir> -t=<Current_Project_Dir>\n'
+    return s
+
+def check_args():
+    result = {"From": None, "To": None, "f": None, "t": None}
+    if len(sys.argv[1:]) < 2:
+        if len(sys.argv[1:]) == 0: sys.exit(show_help())
+        else: sys.exit("\n :: Missing Parameters\n")
+    else:
+        for arg in sys.argv[1:]:
+            org = arg
+            if '~/' in arg:
+                arg = arg.replace('~/', os.path.abspath('~/')[:-1])
+            if arg[:3] == '-f=':
+                result["f"] = org[3:]
+                if (os.path.isdir(os.path.abspath(arg[3:]))):
+                    if result["f"] != "":
+                        result["From"] = os.path.abspath(arg[3:])
+            elif arg[:3] == '-t=':
+                result["t"] = org[3:]
+                if (os.path.isdir(os.path.abspath(arg[3:]))):
+                    if result["t"] != "":
+                        result["To"] = os.path.abspath(arg[3:])
+    return result;
+
+def dirListRecurse(dirPath):
+    files = []
+    for r,d,f in os.walk(dirPath):
+        for a in f:
+            a = a.replace("\'","\'\\\'\'")
+            files.append(os.path.join(r,a))
+    return files
+
+def getPackageName(projectPath):
+    for javaFile in dirListRecurse(projectPath+'/app/src/main/java/'):
+        with open(javaFile,'r') as f:
+            cont = f.readlines()
+            if len(cont) > 1:
+                while len(cont) != 1: cont.pop()
+            if cont[0][:7] == 'package': return cont[0][8:-2];
+    return None;
+
+def getSubPath(javaFiles,project):
+    for javaFile in javaFiles[project]:
+        temp = javaFile.replace(arg[project]+'/app/src/main/java/','').split('/')
+        temp.pop();
+        return '/'.join(temp)
+
+arg = check_args()
+
+if arg["From"] == None: sys.exit("\n :: {} => Directory Not Found !\n".format(arg["f"]))
+if arg["To"] == None: sys.exit("\n :: {} => Directory Not Found !\n".format(arg["t"]))
+
+print("\n :: Backing Up  => '{}' \n ::\t '{}'".format(arg['t'], arg['To']+'/'+arg['t']+'.7z'))
+os.system("7z a '{}' '{}'".format(arg['To']+'/'+arg['t']+'.7z', arg['To']))
+
+print("\n :: Removing 'res' From {}".format(arg["t"]))
+os.system("rm -rf '{}/app/src/main/res'".format(arg['To']))
+print(" :: Copying 'res' From {} => {}".format(arg["f"], arg["t"]))
+os.system("cp -r '{}/app/src/main/res' '{}/app/src/main/'".format(arg['From'],arg['To']))
+
+print("\n :: Importing 'Java' Code From {} to {}".format(arg["f"], arg["t"]))
+packageName = {"From": getPackageName(arg['From']), "To": getPackageName(arg['To'])}
+javaFiles = {"From":dirListRecurse(arg['From']+'/app/src/main/java'), "To": dirListRecurse(arg['To']+'/app/src/main/java')}
+fromJavaPath = arg['From']+'/app/src/main/java/'+getSubPath(javaFiles,'From')
+toJavaPath = arg['To'] + '/app/src/main/java/' + getSubPath(javaFiles,'To')
+os.system("rm -rf '{}/'*".format(toJavaPath))
+os.system("cp -r '{}/'* '{}/'".format(fromJavaPath,toJavaPath))
+for jf in dirListRecurse(arg['To']+'/app/src/main/java/'+getSubPath(javaFiles,'To')):
+    with open("{}".format(jf),'r') as f:
+        cont = []
+        for ln in f.readlines():
+            if packageName['From'] in ln:
+                ln = ln.replace(packageName['From'],packageName['To'])
+                print("\t Changed package {} => {}".format(packageName['From'],packageName['To']))
+            cont.append(ln)
+        with open("{}".format(jf),'w') as f:
+            for ln in cont: f.write(ln)
+
+print("\n :: Generating Manifest ...")
+with open("{}".format(arg['From']+'/app/src/main/AndroidManifest.xml'),'r') as f:
+    cont = []
+    for ln in f.readlines():
+        if packageName['From'] in ln:
+            ln = ln.replace(packageName['From'],packageName['To'])
+        cont.append(ln)
+    with open("{}".format(arg['To']+'/app/src/main/AndroidManifest.xml'),'w') as f:
+        for ln in cont: f.write(ln)
+
+print("\n :: Importing Other Raw Data ...")
+rawData = []
+for f in os.listdir("{}".format(arg['From'])):
+    if '.gitignore' == f:
+        os.system("cat '{}'/.gitignore > {}/.gitignore".format(arg['From'],arg['To']))
+        rawData.append(f)
+    elif f not in os.listdir(arg['To']):
+        if f != '.git':
+            os.system("cp -r '{}/{}' '{}/'".format(arg['From'],f,arg['To']))
+            rawData.append(f)
+for f in os.listdir("{}/app/src/main/".format(arg['From'])):
+    if f not in os.listdir(arg['To']+'/app/src/main/'):
+        os.system("cp -r '{}/app/src/main/{}' '{}/app/src/main/'".format(arg['From'],f,arg['To']))
+        rawData.append(f)
+
+print("\t :: {}".format(rawData))
+
+print("\n :: Import Finished !\n")
+
+#
